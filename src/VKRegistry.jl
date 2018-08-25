@@ -1,0 +1,4 @@
+module VkRegistry
+
+
+end # module
