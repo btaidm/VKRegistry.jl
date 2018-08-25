@@ -16,6 +16,18 @@ struct Registry
 	extensions::Dict{AbstractString,VkExtension}
 end
 
+Registry(tree::AbstractString) = Registry(xp_parse(tree))
+
+Registry(io::IO) = Registry(read(io,String))
+
+function Registry(tree::ETree)
+	vktypes = Dict{AbstractString,VkType}()
+	vkconsts = AbstractString[]
+	vkcommands = Dict{AbstractString,VkCommand}()
+	vkfeature = Dict{VkVersion,VkFeature}()
+	vkextensions = Dict{AbstractString,VkExtension}()
+	Registry(tree,vktypes,vkconsts,vkcommands,vkfeature,vkextensions)
+end
 
 
 include("generators.jl")
