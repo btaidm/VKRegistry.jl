@@ -4,4 +4,6 @@ authors = ["Tim Bradt <tjbradt@mtu.edu>"]
 version = "0.1.0"
 
 [deps]
+EzXML = "8f5d6c58-4d21-5cfd-889c-e3ad7ee6a615"
+Iterators = "a4bce56a-f44e-563f-a45f-5312daf41243"
 LibExpat = "522f3ed2-3f36-55e3-b6df-e94fee9b0c07"
