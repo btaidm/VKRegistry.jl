@@ -1,4 +1,4 @@
-
+using Rematch
 
 abstract type AbstractXmlElement end
 
@@ -68,12 +68,53 @@ function Registry(xml::AbstractString)
 	feature_buffer = nothing
 	interface_reqrem = nothing
 	extn_buffer = nothing
-	cur_blk = Val{nothing}
+	cur_blk = Ref{Union{Nothing,VkBlock}}(nothing)
+
+	vk_elements = AbstractXmlElement[]
+
+	poppedTo = Ref(1)
 
 	for typ in reader
-		
-	end 
-
+		@match typ begin
+			x where x == EzXML.READER_ELEMENT => begin
+				name = nodename(reader)
+				attributes = nodeattributes(reader)
+				push!(vk_elements,TagElement(name,attributes))
+			end
+			x where x == EzXML.READER_END_ELEMENT => begin
+				for el in vk_elements[(poppedTo[]):end]
+					@match el begin
+						TagElement(tag_name, tag_attr) => begin
+							@match tag_name begin
+								"enums" => begin
+									println("Found enums")
+								end
+								# "enum" where cur_blk[] == EnumBlk => begin 
+								end
+								"types" => nothing
+								# "type" where cur_blk[] == TypeBlk =>
+								_ => nothing
+							end
+							# println(tag_name)
+							# println(tag_attr)
+						end
+						CharElement(char, (tag, tag1)) => begin
+							@show char,tag,tag1
+						end
+						_ => nothing
+					end
+				end
+				pop_element_stack!(vk_elements)
+				poppedTo[] = length(vk_elements) != 0 ? length(vk_elements) : 1
+			end
+			x where x == EzXML.READER_TEXT => begin
+				tags = get_tags(vk_elements)
+				chars = nodevalue(reader)
+				push!(vk_elements,CharElement(chars,tags))
+			end
+			_ => nothing
+		end
+	end
 
 
 	Registry(xml,vktypes,vkconsts,vkcommands,vkfeature,vkextensions)

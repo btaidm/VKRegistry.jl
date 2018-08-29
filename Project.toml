@@ -5,3 +5,4 @@ version = "0.1.0"
 
 [deps]
 EzXML = "8f5d6c58-4d21-5cfd-889c-e3ad7ee6a615"
+Rematch = "bfecab0d-fd4d-5014-a23f-56c5fae6447a"
