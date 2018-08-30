@@ -1,10 +1,10 @@
-using Rematch
+using Rematch, EzXML
 
 abstract type AbstractXmlElement end
 
-struct TagElement <:AbstractXmlElement
+struct TagElement{K <: AbstractString,V <: AbstractString} <:AbstractXmlElement
 	name::AbstractString
-	attr::Dict{AbstractString}
+	attr::Dict{K,V}
 end
 
 struct CharElement <: AbstractXmlElement
@@ -63,11 +63,11 @@ function Registry(xml::AbstractString)
 	vkfeature = Dict{VkVersion,VkFeature}()
 	vkextensions = Dict{AbstractString,VkExtension}()
 
-	type_buffer = nothing
-	command_buffer = nothing
-	feature_buffer = nothing
-	interface_reqrem = nothing
-	extn_buffer = nothing
+	type_buffer = Ref{Union{Nothing,VkType}}(nothing)
+	command_buffer = Ref{Union{Nothing,VkCommand}}(nothing)
+	feature_buffer = Ref{Union{Nothing,VkFeature}}(nothing)
+	interface_reqrem = Ref{Union{Nothing,VkReqRem}}(nothing)
+	extn_buffer = Ref{Union{Nothing,VkExtension}}(nothing)
 	cur_blk = Ref{Union{Nothing,VkBlock}}(nothing)
 
 	vk_elements = AbstractXmlElement[]
@@ -84,22 +84,51 @@ function Registry(xml::AbstractString)
 			x where x == EzXML.READER_END_ELEMENT => begin
 				for el in vk_elements[(poppedTo[]):end]
 					@match el begin
-						TagElement(tag_name, tag_attr) => begin
+						TagElement(tag_name, tag_attrs) => begin
 							@match tag_name begin
 								"enums" => begin
-									println("Found enums")
+									name = tag_attrs["name"]
+
+									println("Start EnumBlk")
+									cur_blk[] = EnumBlk
 								end
-								# "enum" where cur_blk[] == EnumBlk => begin 
-								end
-								"types" => nothing
-								# "type" where cur_blk[] == TypeBlk =>
+								"enum" where cur_blk[] == EnumBlk => println("EnumBlk: enum")
+
+								"types" => (cur_blk[] = TypeBlk; println("Start TypeBlk"))
+								"type" where cur_blk[] == TypeBlk => println("TypeBlk: type")
+								"member" where cur_blk[] == TypeBlk => println("TypeBlk: member")
+								"member" => println("Member outside TypeBlk")
+
+								"commands" => (cur_blk[] = CommandBlk; println("Start CommandBlk"))
+								"command" where cur_blk[] == CommandBlk => println("CommandBlk: command")
+								"param" where cur_blk[] == CommandBlk => println("CommandBlk: param")
+
+								"feature" => (cur_blk[] = FeatureBlk; println("Start FeatureBlk"))
+								"require" where cur_blk[] == FeatureBlk => println("FeatureBlk: require")
+								"remove" where cur_blk[] == FeatureBlk => println("FeatureBlk: remove")
+								"command" where cur_blk[] == FeatureBlk => println("FeatureBlk: command")
+								"enum" where cur_blk[] == FeatureBlk => println("FeatureBlk: enum")
+								"type" where cur_blk[] == FeatureBlk => println("FeatureBlk: type")
+
+								"extensions" => (cur_blk[] = ExtensionBlk; println("Start ExtensionBlk"))
+								"extension" where cur_blk[] == ExtensionBlk => println("ExtensionBlk: extension")
+								"command" where cur_blk[] == ExtensionBlk => println("ExtensionBlk: command")
+								"type" where cur_blk[] == ExtensionBlk => println("ExtensionBlk: type")
+								"enum" where cur_blk[] == ExtensionBlk => println("ExtensionBlk: enum")
 								_ => nothing
 							end
 							# println(tag_name)
-							# println(tag_attr)
+							# println(tag_attrs)
 						end
-						CharElement(char, (tag, tag1)) => begin
-							@show char,tag,tag1
+						CharElement(char, (tag, tag1)) where
+								(cur_blk[] == TypeBlk &&
+								tag != "usage") => begin 
+							@show cur_blk[],char,tag,tag1
+						end
+						CharElement(char, (tag, tag1)) where
+								(cur_blk[] == CommandBlk &&
+								tag != "usage") => begin 
+							@show cur_blk[],char,tag,tag1
 						end
 						_ => nothing
 					end

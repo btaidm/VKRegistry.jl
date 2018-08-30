@@ -1,4 +1,4 @@
-module VkRegistry
+module VKRegistry
 
 include("eltype.jl")
 include("member.jl")
