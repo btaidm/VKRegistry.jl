@@ -1,62 +1,67 @@
 abstract type VkType end
 
 struct VkStruct <: VkType
-	name::AbstractString
+	name::String
 	fields::Vector{VkMember}
-	attr::Dict{AbstractString,Any}
+	attr::Dict{String,String}
 end
+VkStruct(name,attr) = VkStruct(name,VkMember[],attr)
 
 struct VkUnion <: VkType
-	name::AbstractString
+	name::String
 	variants::Vector{VkMember}
-	attr::Dict{AbstractString,Any}
+	attr::Dict{String,String}
 end
+VkUnion(name,attr) = VkUnion(name,VkMember[],attr)
+
 
 struct VkEnum <: VkType
-	name::AbstractString
+	name::String
 	fields::Vector{VkVariant}
-	attr::Dict{AbstractString,Any}
+	attr::Dict{String,String}
 end
+VkEnum(name,attr) = VkEnum(name,VkMember[],attr)
 
 struct VkBitMask <: VkType
-	name::AbstractString
+	name::String
 	fields::Vector{VkVariant}
-	attr::Dict{AbstractString,Any}
+	attr::Dict{String,String}
 end
+VkBitMask(name,attr) = VkBitMask(name,VkMember[],attr)
 
 struct VkHandle <: VkType
-	name::AbstractString
+	name::String
 	dispatchable::Bool
-	attr::Dict{AbstractString,Any}
+	attr::Dict{String,String}
 end
 
 struct VkTypeDef <: VkType
-	name::AbstractString
-	typ::AbstractString
-	requires::Union{Nothing,AbstractString}
-	attr::Dict{AbstractString,Any}
+	name::String
+	typ::String
+	requires::Union{Nothing,String}
+	attr::Dict{String,String}
 end
 
 struct ApiConst <: VkType
-	name::AbstractString
-	value::AbstractString
-	attr::Dict{AbstractString,Any}
+	name::String
+	value::String
+	attr::Dict{String,String}
 end
 
 struct VkDefine <: VkType
-	name::AbstractString
-	attr::Dict{AbstractString,Any}
+	name::String
+	attr::Dict{String,String}
 end
 
 struct VkFuncPointer <: VkType
-	name::AbstractString
+	name::String
 	ret::VkElType
 	params::Vector{VkElType}
-	attr::Dict{AbstractString,Any}
+	attr::Dict{String,String}
 end
 
 struct VkExternType <: VkType
-	name::AbstractString
-	requires::AbstractString
-	attr::Dict{AbstractString,Any}
+	name::String
+	requires::String
+	attr::Dict{String,String}
 end

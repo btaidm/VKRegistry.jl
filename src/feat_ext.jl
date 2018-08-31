@@ -1,4 +1,3 @@
-const VkVersion = VersionNumber
 
 abstract type VkInterface end
 

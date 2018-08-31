@@ -1,5 +1,6 @@
 module VKRegistry
 
+include("common.jl")
 include("eltype.jl")
 include("member.jl")
 include("type.jl")

@@ -18,3 +18,9 @@ struct VkBitpos <: VkVariant
 	bitpos::UInt
 	attr::Dict{AbstractString,Any}
 end
+
+struct VkAlias <: VkVariant
+	name::AbstractString
+	alias::AbstractString
+	attr::Dict{AbstractString,Any}
+end

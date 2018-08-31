@@ -41,18 +41,35 @@ function get_tags(elements::Vector{AbstractXmlElement})
 end
 
 struct Registry
-	data::AbstractString
+	# data::AbstractString
 	types::Dict{AbstractString,VkType}
-	consts::Vector{AbstractString}
+	consts::Vector{ApiConst}
 	commands::Dict{AbstractString,VkCommand}
 	feature::Dict{VkVersion,VkFeature}
 	extensions::Dict{AbstractString,VkExtension}
 end
 
 
+pushType!(reg::Registry,::Nothing) = nothing
+pushType!(reg::Registry,vkType::VkType) = reg.types[vkType.name] = vkType
+pushType!(reg::Registry,vkconst::ApiConst) = push!(reg.consts,vkconst)
+
+
+pushCommand!(reg::Registry,::Nothing) = nothing
+pushCommand!(reg::Registry,cmd::VkCommand) = reg.commands[cmd.name] = cmd
+
+pushFeature!(reg::Registry,::Nothing) = nothing
+pushFeature!(reg::Registry,feat::VkFeature) = reg[feat.version] = feat
+
+pushExtension!(reg::Registry,::Nothing) = nothing
+pushExtension!(reg::Registry,extn::VkExtension) = reg[extn.name] = extn
+
+
+
 Registry(io::IO) = Registry(read(io,String))
 
 function Registry(xml::AbstractString)
+
 	buf = IOBuffer(xml)
 	reader = EzXML.StreamReader(buf)
 
@@ -62,6 +79,9 @@ function Registry(xml::AbstractString)
 	vkcommands = Dict{AbstractString,VkCommand}()
 	vkfeature = Dict{VkVersion,VkFeature}()
 	vkextensions = Dict{AbstractString,VkExtension}()
+
+	reg = Registry(vktypes,vkconsts,vkcommands,vkfeature,vkextensions)
+
 
 	type_buffer = Ref{Union{Nothing,VkType}}(nothing)
 	command_buffer = Ref{Union{Nothing,VkCommand}}(nothing)
@@ -83,16 +103,53 @@ function Registry(xml::AbstractString)
 			end
 			x where x == EzXML.READER_END_ELEMENT => begin
 				for el in vk_elements[(poppedTo[]):end]
+					@show type_buffer, command_buffer, feature_buffer, interface_reqrem, extn_buffer, cur_blk
+					@show el
 					@match el begin
 						TagElement(tag_name, tag_attrs) => begin
 							@match tag_name begin
 								"enums" => begin
 									name = tag_attrs["name"]
-
 									println("Start EnumBlk")
+									pushType!(reg,type_buffer[])
+									if name == "API Constants"
+										type_buffer[] = VkEnum(name,tag_attrs)
+									else
+										@match tag_attrs["type"] begin
+											 "enum" => (type_buffer[] = VkEnum(name,tag_attrs))
+											 "bitmask" => (type_buffer[] = VkBitMask(name,tag_attrs))
+											 t => error("Unexpected enum type $(t) $(name)")
+										end
+									end
 									cur_blk[] = EnumBlk
 								end
-								"enum" where cur_blk[] == EnumBlk => println("EnumBlk: enum")
+								"enum" where cur_blk[] == EnumBlk => begin
+									name = tag_attrs["name"]
+									println("EnumBlk: enum")
+									@match type_buffer[] begin
+										VkEnum(enum_name,variants,_) ||
+										VkBitMask(enum_name,variants,_) => begin
+											if enum_name == "API Constants"
+												value = get(tag_attrs,"value") do; tag_attrs["alias"]; end
+												pushType!(reg,ApiConst(name,value,tag_attrs))
+											else
+												push!(variants,
+													if haskey(tag_attrs,"value")
+														VkValue(name,parse(Int,tag_attrs["value"]),tag_attrs)
+													elseif haskey(tag_attrs,"bitpos")
+														VkBitpos(name,parse(Int,tag_attrs["bitpos"]),tag_attrs)
+													elseif haskey(tag_attrs,"alias")
+														VkAlias(name,tag_attrs["alias"],tag_attrs)
+													else
+														error("Could not find value or bitpos in enum")
+													end
+												)
+											end
+										end
+										_ => nothing
+									end
+									
+								end
 
 								"types" => (cur_blk[] = TypeBlk; println("Start TypeBlk"))
 								"type" where cur_blk[] == TypeBlk => println("TypeBlk: type")
@@ -145,7 +202,7 @@ function Registry(xml::AbstractString)
 		end
 	end
 
+	return reg
 
-	Registry(xml,vktypes,vkconsts,vkcommands,vkfeature,vkextensions)
 end
 
