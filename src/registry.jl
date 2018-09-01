@@ -103,8 +103,7 @@ function Registry(xml::AbstractString)
 			end
 			x where x == EzXML.READER_END_ELEMENT => begin
 				for el in vk_elements[(poppedTo[]):end]
-					@show type_buffer, command_buffer, feature_buffer, interface_reqrem, extn_buffer, cur_blk
-					@show el
+					@show type_buffer command_buffer feature_buffer interface_reqrem extn_buffer cur_blk el
 					@match el begin
 						TagElement(tag_name, tag_attrs) => begin
 							@match tag_name begin
@@ -152,7 +151,20 @@ function Registry(xml::AbstractString)
 								end
 
 								"types" => (cur_blk[] = TypeBlk; println("Start TypeBlk"))
-								"type" where cur_blk[] == TypeBlk => println("TypeBlk: type")
+								"type" where cur_blk[] == TypeBlk => begin
+									println("TypeBlk: type")
+									if haskey(tag_attrs,"category")
+										category = tag_attrs["category"]
+										pushType!(reg,type_buffer[])
+										@match category begin
+											"basetype" ||
+											"bitmask" => (type_buffer[] = VkTypedef)
+										    _ => @warn("Unexpected Category: $category",maxlog=10)
+										end
+									else
+										
+									end
+								end
 								"member" where cur_blk[] == TypeBlk => println("TypeBlk: member")
 								"member" => println("Member outside TypeBlk")
 
