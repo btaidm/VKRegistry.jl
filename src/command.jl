@@ -1,13 +1,17 @@
 struct VkParam
 	typ::VkElType
-	name::AbstractString
+	name::String
 	optional::Bool
-	attr::Dict{AbstractString,Any}
+	attr::Attributes
 end
 
+VkParam(attr) = VkParam(VkElUnknown(),"",false,attr)
+
 struct VkCommand
-	name::AbstractString
+	name::String
 	ret::VkElType
 	params::Vector{VkParam}
-	attr::Dict{AbstractString,Any}
+	attr::Attributes
 end
+
+VkCommand(attr) = VkCommand("",VkElUnknown(),VkParam[],attr)

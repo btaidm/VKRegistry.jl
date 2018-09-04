@@ -1,26 +1,28 @@
 struct VkMember
 	fieldType::VkElType
-	fieldName::AbstractString
+	fieldName::String
 	optional::Bool
-	attr::Dict{AbstractString,Any}
+	attr::Attributes
 end
+
+VkMember(optional,attr) = VkMember(VkElUnknown(),"",optional,attr)
 
 abstract type VkVariant end
 
 struct VkValue <: VkVariant
-	name::AbstractString
+	name::String
 	value::Int
-	attr::Dict{AbstractString,Any}
+	attr::Attributes
 end
 
 struct VkBitpos <: VkVariant
-	name::AbstractString
+	name::String
 	bitpos::UInt
-	attr::Dict{AbstractString,Any}
+	attr::Attributes
 end
 
 struct VkAlias <: VkVariant
-	name::AbstractString
-	alias::AbstractString
-	attr::Dict{AbstractString,Any}
+	name::String
+	alias::String
+	attr::Attributes
 end
