@@ -5,7 +5,7 @@ struct VkMember
 	attr::Attributes
 end
 
-VkMember(optional,attr) = VkMember(VkElUnknown(),"",optional,attr)
+VkMember(optional::Bool,attr) = VkMember(VkElUnknown(),"",optional,attr)
 
 abstract type VkVariant end
 

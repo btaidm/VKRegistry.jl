@@ -1,4 +1,68 @@
 using Rematch, EzXML
+import Base: iterate, eltype, length, size, peek
+import Base: IteratorSize, IteratorEltype
+import Base: SizeUnknown, IsInfinite, HasLength, HasShape 
+import Base: HasEltype, EltypeUnknown
+
+struct TakeWhile{I, F<:Base.Callable}
+	takeFunc::F
+	xs::I
+end
+IteratorSize(::Type{<:TakeWhile}) = SizeUnknown()
+eltype(::Type{<:TakeWhile{I}}) where {I} = eltype(I)
+
+function takewhile(takeFunc::F, xs::I) where {F<:Base.Callable, I}
+	TakeWhile{I,F}(takeFunc,xs)
+end
+
+function iterate(it::TakeWhile{I,F}, state = nothing) where {I, F<:Base.Callable}
+	if state === nothing
+		next = iterate(it.xs)
+		next === nothing && return nothing
+	else
+		next = iterate(it.xs, state)
+		next === nothing && return nothing
+	end
+	(prev_val, xs_state) = next
+	it.takeFunc(prev_val) || return nothing
+	return (prev_val,xs_state)
+end
+
+struct SkipWhile{I, F<:Base.Callable}
+	skipFunc::F
+	xs::I
+end
+IteratorSize(::Type{<:SkipWhile}) = SizeUnknown()
+eltype(::Type{<:SkipWhile{I}}) where {I} = eltype(I)
+
+function skipwhile(skipFunc::F, xs::I) where {F<:Base.Callable, I}
+	SkipWhile{I,F}(skipFunc,xs)
+end
+
+function iterate(it::SkipWhile{I,F}, state = nothing) where {I, F<:Base.Callable}
+	if state === nothing
+		next = iterate(it.xs)
+		next === nothing && return nothing
+		(prev_val, xs_state) = next
+		d = it.skipFunc(prev_val)
+		while d
+			next = iterate(it.xs,xs_state)
+			next === nothing && return nothing
+			(prev_val, xs_state) = next
+			d = it.skipFunc(prev_val)
+		end
+		return (prev_val,xs_state)
+		
+	else
+		next = iterate(it.xs, state)
+		next === nothing && return nothing
+		(prev_val, xs_state) = next
+		it.skipFunc(prev_val) || return nothing
+		return (prev_val,xs_state)
+	end
+end
+
+
 
 abstract type AbstractXmlElement end
 
@@ -65,7 +129,47 @@ pushFeature!(reg::Registry, feat::VkFeature) = reg.features[feat.version] = feat
 pushExtension!(reg::Registry, ::Nothing) = nothing
 pushExtension!(reg::Registry, extn::VkExtension) = reg.extensions[extn.name] = extn
 
+function processType(chars::String,typ::VkElType)
+	@match chars begin
+		"const" => make_const(typ)
+		"*" => make_ptr(typ,1)
+		_ where chars[1] == '[' => begin
+			@match parseArrayIndex(chars) begin
+				(s,_) => make_array(typ,s)
+				nothing => error("Unexpected characters after name: $(chars)")
+			end
+		end
+		_ => begin
+			ptrCount = mapfoldl(x->x=='*',+,chars; init = 0)
+			if ptrCount > 0 
+				make_ptr(typ,ptrCount)
+			else
+				typ
+			end
+		end
+	end
+end
 
+
+function parseArrayIndex(chars::String)
+	charIter = reverse(chars)
+	@match charIter[1] begin
+		']' => begin
+			s = 0
+			for (i, digit) in enumerate(takewhile(isdigit,charIter[2:end]))
+				s += parse(Int,digit) * 10^(i+1)
+			end
+			name_len = length(chars)-1
+			@match collect(skipwhile(x->(name_len -= 1; isdigit(x) || isspace(x)),charIter[2:end]))[1] begin
+				'[' => nothing
+				c => error("Expected '[': found $(c)")
+			end
+			(s, name_len)
+		end
+		'[' => (0,0)
+		_ => nothing
+	end
+end
 
 Registry(io::IO) = Registry(read(io, String))
 
@@ -337,15 +441,153 @@ function Registry(xml::AbstractString)
 							# println(tag_name)
 							# println(tag_attrs)
 						end
-						CharElement(char, (tag, tag1)) where
+						CharElement(chars, (tag, tag1)) where
 								(cur_blk[] == TypeBlk &&
-								tag != "usage") => begin 
-							@show cur_blk[], char, tag, tag1
+								tag != "usage") => begin
+							@show cur_blk[], chars, tag, tag1
+							@match type_buffer[] begin
+								VkStruct(_, members, _) || VkUnion(_, members, _) => begin
+									if !isempty(members)
+										lastMember = members[end]
+										@match tag begin
+											"member" => (members[end] = VkMember(processType(chars,lastMember.fieldType),lastMember.fieldName,lastMember.optional,lastMember.attr))
+											"type" => (members[end] = VkMember(set_type(lastMember.fieldType,chars),lastMember.fieldName,lastMember.optional,lastMember.attr))
+											"name" => begin 
+												
+												if (arrayInfo = parseArrayIndex(chars)) != nothing
+													(s,name_len) = arrayInfo
+													newType = make_array(lastMember.fieldType,s)
+													newName = chars[1:name_len]
+													members[end] = VkMember(newType,newName,lastMember.optional,lastMember.attr)
+												else
+													members[end] = VkMember(lastMember.fieldType,chars,lastMember.optional,lastMember.attr)
+												end
+											end 
+											"enum" => (members[end] = VkMember(set_array_const(lastMember.fieldType,chars),lastMember.fieldName,lastMember.optional,lastMember.attr))
+											"comment" => (lastMember.attr["comment"] = (haskey(lastMember.attr,"comment") ? lastMember.attr["comment"] * "\n" : "") * chars)
+											_ => nothing
+										end
+									end
+								end
+								VkTypeDef(name,typ,requires,attrs) => begin
+									@match tag begin
+										"type" => begin
+											if chars != "typedef " && chars != "typedef" && chars != ";"
+												println("Updating Typedef type")
+												type_buffer[] = VkTypeDef(name,chars,requires,attrs)
+											end
+										end
+										"name" => begin
+												type_buffer[] = VkTypeDef(chars,typ,requires,attrs)
+										end
+										"comment" => (attrs["comment"] = (haskey(attrs,"comment") ? attrs["comment"] * "\n" : "") * chars)
+										_ => error("Unexpected tag: $(tag)")
+									end
+								end
+								VkHandle(name,dispatchable,attrs) => begin
+									@match tag begin
+										"type" => begin
+											@match chars begin
+												"VK_DEFINE_HANDLE" => nothing
+												"VK_DEFINE_NON_DISPATCHABLE_HANDLE" => (type_buffer[] = VkHandle(name,false,attrs))
+												"(" || ")" => nothing
+												_ => error("Unexpected handle")
+											end
+										end
+										"name" => begin
+												type_buffer[] = VkHandle(chars,dispatchable,attrs)
+										end
+										"comment" => (attrs["comment"] = (haskey(attrs,"comment") ? attrs["comment"] * "\n" : "") * chars)
+										_ => nothing
+									end
+								end
+								VkDefine(name,attrs) => begin
+									@match tag begin
+										"name" => begin
+												type_buffer[] = VkDefine(chars,attrs)
+										end
+										"type" => begin
+											attrs["type"] = chars
+										end
+										"comment" => (attrs["comment"] = (haskey(attrs,"comment") ? attrs["comment"] * "\n" : "") * chars)
+										_ => error("Unexpected tag: $(tag)")
+									end
+								end
+								VkFuncPointer(name,ret,params,attrs) => begin
+									@match tag begin
+										"name" => begin
+											type_buffer[] = VkFuncPointer(chars,ret,params,attrs)
+										end
+										"type" => begin
+											@match tag1 begin
+												"type" => begin
+													if !isempty(params) && params[end] isa VkVar{true}
+														params[end] = set_type(params[end],chars)
+													else
+														push!(params,VkVar{false}(chars))
+													end
+												end
+												"types" => begin
+													if !(ret isa VkElUnknown)
+														if !isempty(params)
+															indices = [1,1]
+															ptr_count = 0
+															for (b,c) in enumerate(chars)
+																@match c begin
+																	'*' => (ptr_count += 1)
+																	'[' => (indices[1] = b)
+																	']' => (indices[2] = b + 1)
+																	_ => nothing
+																end
+															end
+															
+															if ptr_count > 0
+																params[end] = make_ptr(params[end])
+															elseif indices != [1,1]
+																params[end] = make_array(params[end],parseArrayIndex(chars[indices[1]:indices[2]])[1])
+															end
+														end
+														
+														if endswith(chars,"const")
+															push!(params,empty_const())
+														end
+													else
+														start = 9
+														if (indices = findfirst(" (VKAPI_PTR",chars)) != nothing
+															new_end = indices[1]
+															ptr_count = 0
+															for (b,c) in enumerate(chars[1:(indices[1]-1)])
+																if c == '*'
+																	ptr_count += 1
+																	if new_end == indices[1]
+																		new_end = b - 1
+																	end
+																end
+															end
+															println(chars[start:(indices[1]-1)])
+															if chars[start:(indices[1]-1)] != "void"
+																type_buffer[] = VkFuncPointer(name,make_void(ret),params,attrs)
+															elseif ptr_count != 0
+																type_buffer[] = VkFuncPointer(name,VkPtr{false,ptr_count}(chars[start:new_end]),params,attrs)
+															else
+																type_buffer[] = VkFuncPointer(name,VkVar{false}(chars[start:(indices[1] - 1)]),params,attrs)
+															end
+														end
+													end
+												end
+												_ => nothing
+											end
+										end
+										"comment" => (attrs["comment"] = (haskey(attrs,"comment") ? attrs["comment"] * "\n" : "") * chars)
+									end
+								end
+								_ => ()
+							end
 						end
-						CharElement(char, (tag, tag1)) where
+						CharElement(chars, (tag, tag1)) where
 								(cur_blk[] == CommandBlk &&
 								tag != "usage") => begin 
-							@show cur_blk[], char, tag, tag1
+							@show cur_blk[], chars, tag, tag1
 						end
 						_ => nothing
 					end
